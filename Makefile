@@ -1,13 +1,13 @@
 CFLAGS = -Wall
 
-all: client server 
-client: client.o
-	$(CC) $(CFLAGS) client.o -o client
-client.o: client.c
-	$(CC) $(CFLAGS) -c client.c
-server: server.o
-	$(CC) $(CFLAGS) server.o -o server
-server.o: server.c
-	$(CC) $(CFLAGS) -c server.c
+all: tftp_client tftp_server 
+tftp_client: tftp_client.o
+	$(CC) $(CFLAGS) tftp_client.o -o tftp_client
+tftp_client.o: tftp_client.c
+	$(CC) $(CFLAGS) -c tftp_client.c
+tftp_server: tftp_server.o
+	$(CC) $(CFLAGS) tftp_server.o -o tftp_server
+tftp_server.o: tftp_server.c
+	$(CC) $(CFLAGS) -c tftp_server.c
 clean:
-	rm *.o client server
+	rm *.o tftp_client tftp_server

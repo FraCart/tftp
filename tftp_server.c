@@ -147,6 +147,7 @@ int main(int argc, char **argv)
     printf("[X] Errore bind del socket\n");
     exit(0);
   }
+  printf("[!] Listener avviato...\n");
 
   while (1)
   {
@@ -154,15 +155,10 @@ int main(int argc, char **argv)
     addrlen = sizeof(client_addr);
     // Ricezione connessioni
     ret = recvfrom(sock, (void *)buffer, REQ, 0, (struct sockaddr *)&client_addr, &addrlen);
-
     if (ret < 0)
     {
       printf("[X] Errore in ricezione\n");
       exit(0);
-    }
-    else
-    {
-      printf("[!] Listener avviato...\n");
     }
 
     pid = fork();

@@ -109,7 +109,6 @@ int main(int argc, char *argv[])
   }
 
   printf("[*] Connessione in corso...\n");
-  printf("[*] *");
   // init socket UDP
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s == -1)
@@ -119,22 +118,19 @@ int main(int argc, char *argv[])
   }
   else
   {
-    printf("[*] Socket avviato\n");
+    printf("[*] Socket avviato...\n");
   }
-  printf("*");
-  // inizializzo le strutture per l'indirizzo del server
+  // inizializzo le strutture per gli indirizzi
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = htons(atoi(argv[2]));
   inet_pton(AF_INET, argv[1], &server_addr.sin_addr);
 
-  printf("*");
   memset(&my_addr, 0, sizeof(my_addr));
   my_addr.sin_family = AF_INET;
   my_addr.sin_port = 0;
   my_addr.sin_addr.s_addr = INADDR_ANY;
 
-  printf("*");
   // bind al server
   ret = bind(s, (struct sockaddr *)&my_addr, sizeof(my_addr));
   if (ret < 0)
@@ -142,18 +138,14 @@ int main(int argc, char *argv[])
     printf("[X] Errore in fase di bind\n");
     return 0;
   }
-  printf("*\n");
 
-  printf("[*] Connessione stabilita con %s\n", argv[1]);
+  printf("[!] Connessione stabilita con %s\n", argv[1]);
 
-  printf("[*] I comandi disponibili sono:\n");
+  printf("\n[*] I comandi disponibili sono:\n");
   printf("!help: mostra l'elenco dei comandi\n");
   printf("!mode <txt|bin>: imposta la modalita' di trasferimento (testo/binario)\n");
   printf("!get filename nome_locale: richiede al server il nome del file <filename> e lo salva con il nome <nome_locale>\n");
   printf("!quit: termina il client\n");
-
-  //il pacchetto RRQ si compone da:
-  //opcode_risposta = 2byte , filename = stringa , 0x00 , mode = stringa , 0x00
 
   while (1)
   {
