@@ -1,4 +1,3 @@
-
 CFLAGS = -Wall
 
 all: client server 

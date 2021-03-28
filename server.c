@@ -14,18 +14,27 @@
 int ret;
 int sock;
 int ok;
-int new_sock;
+int new_sd;
 int pos;
 
-unsigned int address_length;
-unsigned int remained;
-pid_t PID;
+/***********************************|  
+|      opcode  operation            |
+|      1     Read request (RRQ)     |
+|      2     Write request (WRQ)    |
+|      3     Data (DATA)            |
+|      4     Acknowledgment (ACK)   |
+|      5     Error (ERROR)          |
+|***********************************/
+
+unsigned int addrlen;
+unsigned int rimanenti;
+pid_t pid;
 char buffer[BUF];
 char nome_file[BUF];
 char mode[BUF];
-char pack[BUF];
+char pacchetto[BUF];
 //buffer di errore
-char Err_buff[BUF];
+char err_buffer[BUF];
 
 FILE *fp;
 uint16_t block_succ;
@@ -35,10 +44,10 @@ char buffer_file[SIZE_FILE];
 
 struct sockaddr_in my_addr, client_addr, new_addr;
 
-int Binary_mode_sending(uint16_t block_num, char *pack, unsigned char *buffer_bin, FILE *fp, unsigned int dim_pkt)
+// Costruzione messaggio bin
+int binary_handler(uint16_t block_number, char *pacchetto, unsigned char *buffer_bin, FILE *fp, unsigned int dimensione_pkt)
 {
-
-  memset(pack, 0, BUF);
+  memset(pacchetto, 0, BUF);
 
   uint16_t opcode = htons(3);
 
@@ -46,73 +55,65 @@ int Binary_mode_sending(uint16_t block_num, char *pack, unsigned char *buffer_bi
 
   memset(buffer_bin, 0, SIZE_FILE);
 
-  fread(buffer_bin, dim_pkt, 1, fp);
+  fread(buffer_bin, dimensione_pkt, 1, fp);
 
-  memcpy(pack + posizione, (uint16_t *)&opcode, 2);
+  memcpy(pacchetto + posizione, (uint16_t *)&opcode, 2);
   posizione += 2;
-  memcpy(pack + posizione, (uint16_t *)&block_num, 2);
+  memcpy(pacchetto + posizione, (uint16_t *)&block_number, 2);
   posizione += 2;
-  memcpy(pack + posizione, buffer_bin, dim_pkt);
-  posizione += dim_pkt;
+  memcpy(pacchetto + posizione, buffer_bin, dimensione_pkt);
+  posizione += dimensione_pkt;
   return posizione;
 }
 
-int Text_mode_sending(uint16_t block_num, char *pack, char *buffer_file, FILE *fp, unsigned int dim_pkt)
+// Costruzione messaggio txt
+int text_handler(uint16_t block_number, char *pacchetto, char *buffer_file, FILE *fp, unsigned int dimensione_pkt)
 {
 
-  memset(pack, 0, BUF);
+  memset(pacchetto, 0, BUF);
   uint16_t opcode = htons(3);
   int posizione = 0;
   memset(buffer_file, 0, SIZE_FILE);
 
-  fread(buffer_file, dim_pkt, 1, fp);
+  fread(buffer_file, dimensione_pkt, 1, fp);
 
-  memcpy(pack + posizione, (uint16_t *)&opcode, 2);
+  memcpy(pacchetto + posizione, (uint16_t *)&opcode, 2);
   posizione += 2;
-  memcpy(pack + posizione, (uint16_t *)&block_num, 2);
+  memcpy(pacchetto + posizione, (uint16_t *)&block_number, 2);
   posizione += 2;
-  strcpy(pack + posizione, buffer_file);
-  posizione += dim_pkt;
+  strcpy(pacchetto + posizione, buffer_file);
+  posizione += dimensione_pkt;
   return posizione;
 }
 
-void SetParameters(int port)
+// Funzione utilita' per impostare l'indirizzo del socket
+void set_dest(int port)
 {
   memset(&my_addr, 0, sizeof(my_addr));
   my_addr.sin_family = AF_INET;
   my_addr.sin_port = htons(port);
   my_addr.sin_addr.s_addr = INADDR_ANY;
-  printf("\nSocket creato.\n");
+  printf("[*] Socket creato\n");
 }
 
-int Error(uint16_t errorCode, char *Err_buff, char *file_name, char *message)
+// Costruzione messaggio di errore
+int error_handler(uint16_t codice_err, char *err_buffer, char *file_name, char *message)
 {
 
   int posizione = 0;
 
-  memset(Err_buff, 0, BUF);
+  memset(err_buffer, 0, BUF);
 
   uint16_t opcode = htons(5);
 
-  memcpy(Err_buff, (uint16_t *)&opcode, 2);
+  memcpy(err_buffer, (uint16_t *)&opcode, 2);
   posizione += 2;
-  memcpy(Err_buff + posizione, (uint16_t *)&errorCode, 2);
+  memcpy(err_buffer + posizione, (uint16_t *)&codice_err, 2);
   posizione += 2;
-  //copio messaggio
-  strcpy(Err_buff + posizione, message);
+  strcpy(err_buffer + posizione, message);
   posizione += strlen(message) + 1;
 
   return posizione;
-}
-
-int OpenConnection()
-{
-  int new_sock = socket(AF_INET, SOCK_DGRAM, 0);
-  memset(&new_addr, 0, sizeof(new_addr));
-  new_addr.sin_family = AF_INET;
-  new_addr.sin_port = htons(0);
-  new_addr.sin_addr.s_addr = INADDR_ANY;
-  return new_sock;
 }
 
 int main(int argc, char **argv)
@@ -120,86 +121,89 @@ int main(int argc, char **argv)
 
   if (argc != 3)
   {
-    printf("\nPer avviare il programma digita ./tftp_server porta directory files\n");
+    printf("[X] Per avviare il programma digita ./tftp_server <porta> <directory files>\n");
     return 0;
   }
 
   int port = atoi(argv[1]);
-  //la directory che viene passata
   char *dir = argv[2];
 
   sock = socket(AF_INET, SOCK_DGRAM, 0);
   if (sock < 0)
   {
-    printf("Si è verificato un errore in fase di connessione: \n");
+    printf("[X] Errore creazione socket\n");
     exit(0);
   }
 
-  //creo indirizzo di bind passando i parametri
-  SetParameters(port);
-  ret = bind(sock, (struct sockaddr *)&my_addr, sizeof(my_addr));
+  memset(&my_addr, 0, sizeof(my_addr));
+  my_addr.sin_family = AF_INET;
+  my_addr.sin_port = htons(port);
+  my_addr.sin_addr.s_addr = INADDR_ANY;
+  printf("[*] Indirizzo server inizializzato\n");
 
+  ret = bind(sock, (struct sockaddr *)&my_addr, sizeof(my_addr));
   if (ret < 0)
   {
-    printf("Si è verificato un errore in fase di bind: \n");
-    close(ret);
+    printf("[X] Errore bind del socket\n");
     exit(0);
   }
-  for (;;)
-  {
 
+  while (1)
+  {
     memset(&buffer, 0, BUF);
-    address_length = sizeof(client_addr);
-    //accetto nuove connessioni
-    ret = recvfrom(sock, (void *)buffer, REQ, 0, (struct sockaddr *)&client_addr, &address_length);
+    addrlen = sizeof(client_addr);
+    // Ricezione connessioni
+    ret = recvfrom(sock, (void *)buffer, REQ, 0, (struct sockaddr *)&client_addr, &addrlen);
 
     if (ret < 0)
     {
-      printf("Si è verificato un errore in fase di ricezione: \n");
+      printf("[X] Errore in ricezione\n");
       exit(0);
     }
     else
     {
-      printf("\nRicevuto ...\n");
+      printf("[!] Listener avviato...\n");
     }
 
-    PID = fork();
-    if (PID == -1)
+    pid = fork();
+    if (pid == -1)
     {
-
-      printf("Fork Error\n");
+      printf("[X] Errore nella fork\n");
       exit(-1);
     }
-    if (PID == 0)
+
+    if (pid == 0)
     {
-      //sono il processo figlio
-      //qui apro la connessione per inviare passo i parametri a una funzione esterna
-      new_sock = OpenConnection();
+      // processo figlio per l'invio dei messaggi
+      new_sd = socket(AF_INET, SOCK_DGRAM, 0);
+      memset(&new_addr, 0, sizeof(new_addr));
+      new_addr.sin_family = AF_INET;
+      new_addr.sin_port = htons(0);
+      new_addr.sin_addr.s_addr = INADDR_ANY;
 
-      ret = bind(new_sock, (struct sockaddr *)&new_addr, sizeof(new_addr));
-
+      ret = bind(new_sd, (struct sockaddr *)&new_addr, sizeof(new_addr));
       if (ret < 0)
       {
-        printf("Si è verificato un errore in fase di bind: \n");
+        printf("[X] Errore nella fase di bind\n");
         exit(0);
       }
+
       close(sock);
 
-      uint16_t opcode, errorCode;
+      uint16_t opcode, codice_err;
       memcpy(&opcode, buffer, 2);
       ok = 0;
       opcode = ntohs(opcode);
 
       if (opcode == 1)
       {
-        //qui l'opcode è valido
         memset(nome_file, 0, BUF);
         strcpy(nome_file, buffer + 2);
         strcpy(mode, buffer + (int)strlen(nome_file) + 3);
 
-        printf("\nRichiesto il  download del file %s", nome_file);
+        printf("[*] Richiesto il  download del file '%s'...", nome_file);
 
-        //mi occupo del percorso
+        // creazione path del file
         char *path = malloc(strlen(dir) + strlen(nome_file) + 2);
         strcpy(path, dir);
         strcat(path, "/");
@@ -211,143 +215,140 @@ int main(int argc, char **argv)
           fp = fopen(path, "rb");
         free(path);
 
+        // Gesione file non trovato
         if (fp == NULL)
         {
-          errorCode = htons(1);
+          codice_err = htons(1);
           memset(message, 0, SIZE_FILE);
 
-          strcpy(message, "File not found\0");
-          pos = Error(errorCode, Err_buff, nome_file, message);
-          new_sock = socket(AF_INET, SOCK_DGRAM, 0);
+          strcpy(message, "File non trovato\0");
+          pos = error_handler(codice_err, err_buffer, nome_file, message);
+          new_sd = socket(AF_INET, SOCK_DGRAM, 0);
 
-          printf("\nATTENZIONE! Lettura del file %s non riuscita\n", nome_file);
-          ret = sendto(new_sock, Err_buff, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
+          printf("\n[X] Lettura del file '%s' non riuscita\n", nome_file);
+          ret = sendto(new_sd, err_buffer, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
           if (ret < 0)
           {
-            printf("\nATTENZIONE: Invio dei dati fallito\n");
+            printf("\n[X] Errore invio risposta\n");
             exit(0);
           }
 
-          close(new_sock);
+          close(new_sd);
           continue;
         }
         else
         {
+          printf("\n[*] File %s trovato\n", nome_file);
 
-          printf("\nLettura del file %s riuscita\n", nome_file);
-
+          // Invio del PRIMO blocco txt
           if (!strcmp(mode, "netascii\0"))
           {
-
             unsigned int len = 0;
             while (fgetc(fp) != EOF)
               len++;
 
             fseek(fp, 0, SEEK_SET);
 
-            uint16_t block_num = htons(1);
-            unsigned int dim_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
-            remained = len - dim_pkt;
-            int pos = Text_mode_sending(block_num, pack, buffer_file, fp, dim_pkt);
+            uint16_t block_number = htons(1);
+            unsigned int dimensione_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
+            rimanenti = len - dimensione_pkt;
+            int pos = text_handler(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
             block_succ = 1;
 
-            ret = sendto(new_sock, pack, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
-
+            ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             if (ret < 0)
             {
-              printf("ATTENZIONE: Si è verificato un errore durante l'invio del blocco al client.");
+              printf("[X] Errore trasferimento blocco\n");
               exit(0);
             }
           }
-          else
+          else // Invio del PRIMO blocco bin
           {
-
             fseek(fp, 0, SEEK_END);
             unsigned int len = ftell(fp);
             fseek(fp, 0, SEEK_SET);
-            uint16_t block_num = htons(1);
-            unsigned int dim_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
-            remained = len - dim_pkt;
+            uint16_t block_number = htons(1);
+            unsigned int dimensione_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
+            rimanenti = len - dimensione_pkt;
 
-            int pos = Binary_mode_sending(block_num, pack, buffer_bin, fp, dim_pkt);
+            int pos = binary_handler(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
             block_succ = 1;
 
-            ret = sendto(new_sock, pack, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
-
+            ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             if (ret < 0)
             {
-              printf("Errore nella send");
+              printf("[X] Errore trasferimento blocco\n");
               exit(0);
             }
           }
         }
         ok = 1;
       }
+
+      // Gestione opcode sconosciuto o non supportato
       if (opcode != 1 || (opcode == 4 && ok == 0))
       {
-        errorCode = htons(2);
+        codice_err = htons(2);
         memset(message, 0, SIZE_FILE);
-        strcpy(message, "l'operazione TFTP non è esistente\0");
-        pos = Error(errorCode, Err_buff, nome_file, message);
-        new_sock = socket(AF_INET, SOCK_DGRAM, 0);
+        strcpy(message, "operazione TFTP non ammessa\0");
+        pos = error_handler(codice_err, err_buffer, nome_file, message);
+        new_sd = socket(AF_INET, SOCK_DGRAM, 0);
 
-        ret = sendto(new_sock, Err_buff, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
-
+        ret = sendto(new_sd, err_buffer, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
         if (ret < 0)
         {
-          printf("\nATTENZIONE: Si è verificato un errore nell'invio dei dati \n");
+          printf("[X] Errore invio risposta\n");
           exit(0);
         }
 
-        close(new_sock);
+        close(new_sd);
         continue;
       }
-      for (;;)
+
+      // Gestione ricezione ACK
+      while (1)
       {
-        memset(pack, 0, BUF);
-        address_length = sizeof(client_addr);
+        memset(pacchetto, 0, BUF);
+        addrlen = sizeof(client_addr);
 
-        ret = recvfrom(new_sock, pack, ACK, 0, (struct sockaddr *)&client_addr, &address_length);
-
+        ret = recvfrom(new_sd, pacchetto, ACK, 0, (struct sockaddr *)&client_addr, &addrlen);
         if (ret < 0)
         {
-          printf("ATTENZIONE: si è verificato un errore nella receive.\n");
+          printf("[X] Errore ricezione ack\n");
           exit(0);
         }
 
         uint16_t opcode;
-        memcpy(&opcode, pack, 2);
-
+        memcpy(&opcode, pacchetto, 2);
         opcode = ntohs(opcode);
 
         if (opcode == 4)
         {
-
-          if (remained > 0)
+          // Invio blocchi rimanenti
+          if (rimanenti > 0)
           {
-
-            unsigned int dim_pkt = (remained > SIZE_FILE) ? SIZE_FILE : remained;
+            unsigned int dimensione_pkt = (rimanenti > SIZE_FILE) ? SIZE_FILE : rimanenti;
             block_succ++;
-            remained -= dim_pkt;
-            uint16_t block_num = htons(block_succ);
+            rimanenti -= dimensione_pkt;
+            uint16_t block_number = htons(block_succ);
 
             if (!strcmp(mode, "netascii\0"))
             {
-              //modalità text
-              pos = Text_mode_sending(block_num, pack, buffer_file, fp, dim_pkt);
-              ret = sendto(new_sock, pack, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
+              // mode txt
+              pos = text_handler(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
+              ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             }
             else
             {
-              //modalità binaria
-              pos = Binary_mode_sending(block_num, pack, buffer_bin, fp, dim_pkt);
-              ret = sendto(new_sock, pack, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
+              // mode bin
+              pos = binary_handler(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
+              ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             }
           }
           else
           {
-            printf("\nTrasferito!");
-            //resetto ok
+            printf("[!] File trasferito!\n");
+            // reset ok
             ok = 0;
             exit(1);
             break;
@@ -355,7 +356,7 @@ int main(int argc, char **argv)
         }
       }
     }
-    if (PID > 0)
+    if (pid > 0)
     {
       continue;
     }
