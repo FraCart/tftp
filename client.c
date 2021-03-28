@@ -24,7 +24,6 @@ int s, ret, len;
 char *tipo_trasferimento = BINARY_MODE;
 char nome_file[MAX_BUF_LEN];
 char nome_locale[MAX_BLOCK_LEN];
-char *err;
 char *data;
 FILE *fp;
 struct sockaddr_in server_addr, my_addr;
@@ -37,8 +36,8 @@ size_t totale_ricevuti = 0;
 size_t bytes_ricevuti;
 
 // identificatori per la struttura dei messaggi:
-//       opcode del       opcode del 
-//       messaggio di     messagio      
+//       opcode del       opcode del
+//       messaggio di     messagio
 //       risposta         da inviare
 uint16_t opcode_risposta, opcode_send, block, tipo_messaggio;
 
@@ -63,10 +62,11 @@ void ack(uint16_t block_number)
 }
 
 // Funzione di utilita', riceve i byte dal buffer (var. globale)
-// salvandoli in block e restituisce quanti byte sono stati ricevuti
+// conservandoli in 'data' e 'block' e restituisce quanti byte sono stati ricevuti
 // nella singola transazione
 size_t ricevi_bytes()
 {
+  // salvo il block scorrendo di due (saltando la parte OPCODE)
   memcpy(&block, (buffer + 2), 2);
   block = ntohs(block);
 
@@ -91,11 +91,7 @@ void write_and_close()
   totale_ricevuti = 0;
   free(data);
   fclose(fp);
-}
-
-void message(int sd, const char *server, struct sockaddr_in server_addr)
-{
-  printf("[*] Stai comunicando con %s \n", server);
+  printf("[!] Il salvataggio del file %s e' stato completato\n", nome_locale);
 }
 
 int main(int argc, char *argv[])
@@ -216,7 +212,7 @@ int main(int argc, char *argv[])
 
       // byte 0x00
       memset((packet + len_rrq), 0, sizeof(char));
-      
+
       //controllo dell'invio
       ret = sendto(s, packet, message_size, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
       if (ret == -1)
@@ -238,12 +234,11 @@ int main(int argc, char *argv[])
         }
         int posizione = 0;
 
-        // gestione opcode_risposta della risposta
+        // gestione opcode della risposta
         memcpy(&tipo_messaggio, buffer + posizione, sizeof(tipo_messaggio));
         posizione += sizeof(tipo_messaggio);
         opcode_risposta = ntohs(tipo_messaggio);
 
-        //dunque controllo che tipo di opcode_risposta mi ritrovo
         if (opcode_risposta != 3 && opcode_risposta != 5)
         {
           printf("[X] Operazione non consentita\n");
@@ -258,46 +253,38 @@ int main(int argc, char *argv[])
 
         if (opcode_risposta == 3)
         {
+          printf("[*] Richiesta accettata...\n");
           bytes_ricevuti = ricevi_bytes();
-          //ricordiamo che la  funzione di utilità ricevi_bytes farà
-          //le sue operazioni inviare un ack per poi aggiornare
-          //il totale condiviso
 
           if (bytes_ricevuti < MAX_BLOCK_LEN)
           {
-            printf("Sto trasferendo ...\n");
-            printf("Trasferimento completato (%u/%u blocchi)\n", block, block);
+            printf("[*] Trasferimento completato (%u/%u blocchi)\n", block, block);
           }
         }
       } while (len > MAX_BLOCK_LEN);
 
       if (opcode_risposta == 3)
       {
-        //in caso di codice operativo di tipo 3 dunque devo scrivere il
-        //file che il client ha richiesto
-
-        if (strcmp(tipo_trasferimento, BINARY_MODE) == 0)
+        // Scrivo il file ricevuto
+        if (!strcmp(tipo_trasferimento, BINARY_MODE))
         {
           fp = fopen(nome_locale, "a+");
         }
-        else if (strcmp(tipo_trasferimento, TEXT_MODE) == 0)
+        else if (!strcmp(tipo_trasferimento, TEXT_MODE))
         {
           fp = fopen(nome_locale, "ab+");
         }
         if (fp == NULL)
         {
-          printf("Si è verificato un errore durante il salvataggio del file\n\n");
+          printf("[X] Errore durante il salvataggio del file\n");
           exit(1);
         }
-        printf("Il salvataggio del file %s è stato completato\n", nome_locale);
-        // scrivo e chiudo
         write_and_close();
       }
     }
     else
     {
-      err = "Comando non trovato, digita !help per la lista completa dei comandi\n";
-      printf("%s\n", err);
+      printf("[X] Comando non trovato, digita !help per la lista completa dei comandi\n");
     }
   }
   close(s);
