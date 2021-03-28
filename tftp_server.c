@@ -26,33 +26,33 @@ int pos;
 |      5     Error (ERROR)          |
 |***********************************/
 
-unsigned int addrlen;
-unsigned int rimanenti;
+
 pid_t pid;
+
+char pacchetto[BUF];
+char err_buffer[BUF];
 char buffer[BUF];
 char nome_file[BUF];
 char mode[BUF];
-char pacchetto[BUF];
-//buffer di errore
-char err_buffer[BUF];
+
+char message[SIZE_FILE];
+char buffer_file[SIZE_FILE];
+unsigned char buffer_bin[SIZE_FILE];
+
+unsigned int addrlen;
+unsigned int rimanenti;
 
 FILE *fp;
 uint16_t block_succ;
-unsigned char buffer_bin[SIZE_FILE];
-char message[SIZE_FILE];
-char buffer_file[SIZE_FILE];
 
 struct sockaddr_in my_addr, client_addr, new_addr;
 
 // Costruzione messaggio bin
-int binary_handler(uint16_t block_number, char *pacchetto, unsigned char *buffer_bin, FILE *fp, unsigned int dimensione_pkt)
+int binary_builder(uint16_t block_number, char *pacchetto, unsigned char *buffer_bin, FILE *fp, unsigned int dimensione_pkt)
 {
   memset(pacchetto, 0, BUF);
-
   uint16_t opcode = htons(3);
-
   int posizione = 0;
-
   memset(buffer_bin, 0, SIZE_FILE);
 
   fread(buffer_bin, dimensione_pkt, 1, fp);
@@ -67,9 +67,8 @@ int binary_handler(uint16_t block_number, char *pacchetto, unsigned char *buffer
 }
 
 // Costruzione messaggio txt
-int text_handler(uint16_t block_number, char *pacchetto, char *buffer_file, FILE *fp, unsigned int dimensione_pkt)
+int text_builder(uint16_t block_number, char *pacchetto, char *buffer_file, FILE *fp, unsigned int dimensione_pkt)
 {
-
   memset(pacchetto, 0, BUF);
   uint16_t opcode = htons(3);
   int posizione = 0;
@@ -86,24 +85,11 @@ int text_handler(uint16_t block_number, char *pacchetto, char *buffer_file, FILE
   return posizione;
 }
 
-// Funzione utilita' per impostare l'indirizzo del socket
-void set_dest(int port)
-{
-  memset(&my_addr, 0, sizeof(my_addr));
-  my_addr.sin_family = AF_INET;
-  my_addr.sin_port = htons(port);
-  my_addr.sin_addr.s_addr = INADDR_ANY;
-  printf("[*] Socket creato\n");
-}
-
 // Costruzione messaggio di errore
-int error_handler(uint16_t codice_err, char *err_buffer, char *file_name, char *message)
+int error_builder(uint16_t codice_err, char *err_buffer, char *file_name, char *message)
 {
-
   int posizione = 0;
-
   memset(err_buffer, 0, BUF);
-
   uint16_t opcode = htons(5);
 
   memcpy(err_buffer, (uint16_t *)&opcode, 2);
@@ -218,7 +204,7 @@ int main(int argc, char **argv)
           memset(message, 0, SIZE_FILE);
 
           strcpy(message, "File non trovato\0");
-          pos = error_handler(codice_err, err_buffer, nome_file, message);
+          pos = error_builder(codice_err, err_buffer, nome_file, message);
           new_sd = socket(AF_INET, SOCK_DGRAM, 0);
 
           printf("\n[X] Lettura del file '%s' non riuscita\n", nome_file);
@@ -248,7 +234,7 @@ int main(int argc, char **argv)
             uint16_t block_number = htons(1);
             unsigned int dimensione_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
             rimanenti = len - dimensione_pkt;
-            int pos = text_handler(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
+            int pos = text_builder(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
             block_succ = 1;
 
             ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
@@ -267,7 +253,7 @@ int main(int argc, char **argv)
             unsigned int dimensione_pkt = (len > SIZE_FILE) ? SIZE_FILE : len;
             rimanenti = len - dimensione_pkt;
 
-            int pos = binary_handler(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
+            int pos = binary_builder(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
             block_succ = 1;
 
             ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
@@ -287,7 +273,7 @@ int main(int argc, char **argv)
         codice_err = htons(2);
         memset(message, 0, SIZE_FILE);
         strcpy(message, "operazione TFTP non ammessa\0");
-        pos = error_handler(codice_err, err_buffer, nome_file, message);
+        pos = error_builder(codice_err, err_buffer, nome_file, message);
         new_sd = socket(AF_INET, SOCK_DGRAM, 0);
 
         ret = sendto(new_sd, err_buffer, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
@@ -331,13 +317,13 @@ int main(int argc, char **argv)
             if (!strcmp(mode, "netascii\0"))
             {
               // mode txt
-              pos = text_handler(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
+              pos = text_builder(block_number, pacchetto, buffer_file, fp, dimensione_pkt);
               ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             }
             else
             {
               // mode bin
-              pos = binary_handler(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
+              pos = binary_builder(block_number, pacchetto, buffer_bin, fp, dimensione_pkt);
               ret = sendto(new_sd, pacchetto, pos, 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
             }
           }

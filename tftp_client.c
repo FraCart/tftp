@@ -24,6 +24,7 @@ int s, ret, len;
 char *tipo_trasferimento = BINARY_MODE;
 char nome_file[MAX_BUF_LEN];
 char nome_locale[MAX_BLOCK_LEN];
+char *err_msg;
 char *data;
 FILE *fp;
 struct sockaddr_in server_addr, my_addr;
@@ -53,7 +54,7 @@ void ack(uint16_t block_number)
   memcpy(pacchetto_di_ack, &codice_di_ack, 2);
   memcpy((pacchetto_di_ack + 2), &block_number, 2);
   ret = sendto(s, pacchetto_di_ack, 4, 0, (struct sockaddr *)&destination_port, sizeof(destination_port));
-  if (ret == -1)
+  if (ret < 0)
   {
     printf("[X] Si è verificato un errore durante l'invio dell'ACK\n\n");
     exit(1);
@@ -104,7 +105,7 @@ int main(int argc, char *argv[])
 
   if (argc != 3)
   {
-    printf("[!] Per avviare il client bisogna specificare l'IP\n[!] e la porta del server nel formato\n[!] ./tftp_client <IP> <porta>\n");
+    printf("[!] Per avviare il client correttamente digita ./tftp_client <IP> <porta>\n");
     return 0;
   }
 
@@ -149,7 +150,7 @@ int main(int argc, char *argv[])
 
   while (1)
   {
-    printf("%s", "> ");
+    printf("\n%s", "> ");
 
     fgets(buffer, MAX_BUF_LEN, stdin);
     sscanf(buffer, "%s %s %s", cmd, nome_file, nome_locale);
@@ -205,9 +206,8 @@ int main(int argc, char *argv[])
       // byte 0x00
       memset((packet + len_rrq), 0, sizeof(char));
 
-      //controllo dell'invio
       ret = sendto(s, packet, message_size, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-      if (ret == -1)
+      if (ret < 0)
       {
         printf("[X] Invio richiesta non riuscito");
         exit(1);
@@ -239,13 +239,13 @@ int main(int argc, char *argv[])
 
         if (opcode_risposta == 5)
         {
-          printf("[X] File non trovato\n");
+          err_msg = buffer + 4;
+          printf("[X] %s\n", err_msg);
           break;
         }
 
         if (opcode_risposta == 3)
         {
-          printf("[*] Richiesta accettata...\n");
           bytes_ricevuti = ricevi_bytes();
 
           if (bytes_ricevuti < MAX_BLOCK_LEN)
