@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
   printf("\n[*] I comandi disponibili sono:\n");
   printf("!help: mostra l'elenco dei comandi\n");
   printf("!mode <txt|bin>: imposta la modalita' di trasferimento (testo/binario)\n");
-  printf("!get filename nome_locale: richiede al server il nome del file <filename> e lo salva con il nome <nome_locale>\n");
+  printf("!get filename nome_locale: richiede al server il file <filename> e lo salva con il nome <nome_locale> (specificare le estensioni per entrambi)\n");
   printf("!quit: termina il client\n");
 
   while (1)
